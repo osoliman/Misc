@@ -1,16 +1,12 @@
 import pandas as pd
 from google.cloud import bigquery
+from openpyxl import load_workbook
 
 # Initialize BigQuery client
 client = bigquery.Client()
 
-# Read the Excel file
-excel_df = pd.read_excel('input.xlsx', names=['identifier', 'value'])
-
-# Get unique identifiers from Excel
-unique_identifiers = excel_df['identifier'].unique().tolist()
-
-# Query BigQuery for the new values
+# First, get the new values from BigQuery
+unique_identifiers = ['A', 'B']  # Get these from your actual data
 query = f"""
 SELECT 
     identifier,
@@ -19,28 +15,26 @@ FROM your_project.your_dataset.your_table
 WHERE identifier IN ({','.join([f"'{id}'" for id in unique_identifiers])})
 """
 
-# Execute query and convert to pandas DataFrame
+# Execute query and convert to DataFrame
 bq_df = client.query(query).to_dataframe()
 bq_df.columns = ['identifier', 'new_value']
 
-# Merge Excel data with BigQuery data based on identifier
-merged_df = pd.merge(
-    excel_df,
-    bq_df,
-    on='identifier',
-    how='left'
-)
+# Create a dictionary for quick lookup
+replacement_dict = dict(zip(bq_df['identifier'], bq_df['new_value']))
 
-# Replace old values with new values
-merged_df['value'] = merged_df['new_value']
+# Load the workbook and select the active sheet
+wb = load_workbook('input.xlsx', data_only=False)  # data_only=False preserves formulas
+ws = wb.active
 
-# Drop the new_value column and keep original structure
-final_df = merged_df[['identifier', 'value']]
+# Define the columns where identifier and value are located
+id_col = 'A'  # Change these to match your Excel structure
+value_col = 'B'
 
-# Save the modified DataFrame to a new Excel file
-final_df.to_excel('output.xlsx', index=False)
+# Update only the specific cells while preserving everything else
+for row in range(2, ws.max_row + 1):  # Assuming header is in row 1
+    identifier = ws[f'{id_col}{row}'].value
+    if identifier in replacement_dict:
+        ws[f'{value_col}{row}'].value = replacement_dict[identifier]
 
-# Check for any unmatched identifiers (optional)
-unmatched = excel_df[~excel_df['identifier'].isin(bq_df['identifier'])]['identifier'].tolist()
-if unmatched:
-    print(f"Warning: No matching values found for identifiers: {unmatched}")
+# Save the workbook
+wb.save('output.xlsx')
