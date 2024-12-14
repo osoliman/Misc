@@ -1,6 +1,7 @@
 import pandas as pd
 from google.cloud import bigquery
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 # Initialize BigQuery client
 client = bigquery.Client()
@@ -23,18 +24,37 @@ bq_df.columns = ['identifier', 'new_value']
 replacement_dict = dict(zip(bq_df['identifier'], bq_df['new_value']))
 
 # Load the workbook and select the active sheet
-wb = load_workbook('input.xlsx', data_only=False)  # data_only=False preserves formulas
+wb = load_workbook('input.xlsx', data_only=False)
 ws = wb.active
 
-# Define the columns where identifier and value are located
-id_col = 'A'  # Change these to match your Excel structure
-value_col = 'B'
+# Find column indices based on header names
+header_row = 1  # Assuming headers are in first row
+id_col_name = 'Race'
+value_col_name = 'N_members'
+
+# Find the column letters for our target columns
+id_col_letter = None
+value_col_letter = None
+
+for col in range(1, ws.max_column + 1):
+    col_letter = get_column_letter(col)
+    cell_value = ws[f'{col_letter}{header_row}'].value
+    if cell_value == id_col_name:
+        id_col_letter = col_letter
+    elif cell_value == value_col_name:
+        value_col_letter = col_letter
+
+if not id_col_letter or not value_col_letter:
+    raise ValueError(f"Could not find columns: {id_col_name} and/or {value_col_name}")
 
 # Update only the specific cells while preserving everything else
-for row in range(2, ws.max_row + 1):  # Assuming header is in row 1
-    identifier = ws[f'{id_col}{row}'].value
+for row in range(2, ws.max_row + 1):  # Starting from row 2 (after header)
+    identifier = ws[f'{id_col_letter}{row}'].value
     if identifier in replacement_dict:
-        ws[f'{value_col}{row}'].value = replacement_dict[identifier]
+        ws[f'{value_col_letter}{row}'].value = replacement_dict[identifier]
 
 # Save the workbook
 wb.save('output.xlsx')
+
+# Print confirmation
+print(f"Updated values in column {value_col_name} based on matches in column {id_col_name}")
